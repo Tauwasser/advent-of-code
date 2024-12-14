@@ -6,10 +6,12 @@ import logging
 import math
 
 from collections import defaultdict
+from collections.abc import Callable, Generator
 from itertools import chain, combinations
 from dataclasses import dataclass, field
 
 from lib import setup
+from lib.util import unique
 
 example_input = """............
 ........0...
@@ -148,13 +150,22 @@ def read_inputs(example=0):
     
     return Puzzle(antennas={**antennas}, width=x, height=y)
 
-def part1(puzzle: Puzzle) -> dict[str, list[Antinode]]:
+def in_map_fn_factory(puzzle: Puzzle) -> Callable[[IntVector2D], bool]:
+    
+    def _in_map(position: IntVector2D):
+        if not(0 <= position.x <= puzzle.width):
+            return False
+        if not (0 <= position.y <= puzzle.height):
+            return False
+        return True
+    
+    return _in_map
+
+def part1(puzzle: Puzzle) -> list[Antinode]:
     """Determine list of Antinodes"""
     antinodes : dict[str, list[Antinode]] = defaultdict(lambda: [])
     
-    # short-hands for puzzle width/height
-    height = puzzle.height
-    width = puzzle.width
+    in_map = in_map_fn_factory(puzzle)
     
     # for all pairings of antennas of same frequencies
     # determine antinodes (if inside map)
@@ -167,26 +178,60 @@ def part1(puzzle: Puzzle) -> dict[str, list[Antinode]]:
             positions = (lhs.position - delta, rhs.position + delta)
             
             for position in positions:
-                if not(0 <= position.x <= width):
-                    continue
-                if not (0 <= position.y <= height):
+                if not in_map(position):
                     continue
                 # antinode found in map
                 antinodes[frequency].append(Antinode((lhs, rhs), position))
     
-    return {**antinodes}
+    # restrict to unique antinode locations
+    unique_antinodes = unique(chain(*antinodes.values()),
+                              key=lambda antinode: (antinode.position.x, antinode.position.y)
+                              )
+    
+    return unique_antinodes
 
-def part2():
-    pass
+def part2(puzzle: Puzzle) -> list[Antinode]:
+    """Determine list of Antinodes including resonance"""
+    antinodes : dict[str, list[Antinode]] = defaultdict(lambda: [])
+    
+    in_map = in_map_fn_factory(puzzle)
+    
+    def _antinode_iter(begin: IntVector2D, delta: IntVector2D) -> Generator[IntVector2D]:
+        
+        # yield position of resonant antenna as well
+        position = begin
+        
+        while (in_map(position)):
+            yield position
+            position = position + delta
+        
+    
+    # for all pairings of antennas of same frequencies
+    # determine antinodes (if inside map)
+    for frequency, antennas in puzzle.antennas.items():
+        for lhs, rhs in combinations(antennas, 2):
+            
+            delta = rhs.position - lhs.position
+            
+            # iterate through all possible positions
+            for position in chain(_antinode_iter(lhs.position, -delta), _antinode_iter(rhs.position, +delta)):
+                # antinode found in map
+                antinodes[frequency].append(Antinode((lhs, rhs), position))
+    
+    # restrict to unique antinode locations
+    unique_antinodes = unique(chain(*antinodes.values()),
+                              key=lambda antinode: (antinode.position.x, antinode.position.y)
+                              )
+    
+    return unique_antinodes
 
 def main(args):
     
     puzzle = read_inputs(args.example)
-    antinodes = part1(puzzle)
-    unique_positions = set((antinode.x, antinode.y) for antinode in chain(*antinodes.values()))
-    logging.info(f'Part 1: {len(unique_positions)}')
-    part2()
-    logging.info(f'Part 2: ')
+    unique_antinodes = part1(puzzle)
+    logging.info(f'Part 1: {len(unique_antinodes)}')
+    unique_antinodes = part2(puzzle)
+    logging.info(f'Part 2: {len(unique_antinodes)}')
 
 if __name__ == '__main__':
     args = setup()
