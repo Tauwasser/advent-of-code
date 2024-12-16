@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import functools
 import logging
 import math
 
@@ -13,36 +14,30 @@ example_input = """125 17
 """
 
 
-def ilog10_int(number: int) -> int:
-    return math.ceil(math.log10(number + 0.1))
-
-def ilog10_str(number: int) -> int:
-    return len(str(number))
+def ilog10(number: int) -> int:
+    return math.ceil(math.log10(number + 1))
 
 
-@dataclass
-class Stone:
-    number: int
+@functools.cache
+def blink(number: int, steps: int) -> int:
     
-    def change(self) -> 'Stone | None':
-        
-        if (self.number == 0):
-            # rule 1: 0 --> 1
-            self.number = 1
-        elif (0 == (exp := ilog10_int(self.number)) % 2):
-            # rule 2: split stones if number even length
-            split = int(10 ** (exp / 2))
-            lhs = self.number // split
-            rhs = self.number % split
-            self.number = rhs
-            return Stone(lhs)
-        else:
-            # rule 3: number multiplied bz 2024
-            self.number *= 2024
-        
-        return None
+    # decrement steps
+    steps -= 1
+    
+    if (number == 0):
+        # rule 1: 0 --> 1
+        return blink(1, steps) if (steps > 0) else 1
+    elif (0 == (exp := ilog10(number)) % 2):
+        # rule 2: split stones if number even length
+        split = int(10 ** (exp / 2))
+        lhs = number // split
+        rhs = number % split
+        return (blink(lhs, steps) + blink(rhs, steps)) if (steps > 0) else 2
+    else:
+        # rule 3: number multiplied bz 2024
+        return blink(number * 2024, steps) if (steps > 0) else 1
 
-def read_inputs(example=0) -> list[Stone]:
+def read_inputs(example=0) -> list[int]:
     
     match (example):
         case _ if (example):
@@ -52,39 +47,24 @@ def read_inputs(example=0) -> list[Stone]:
                 data = f.readline()
     
     # parse logic
-    return [Stone(int(n)) for n in data.split()]
+    return [int(n) for n in data.split()]
 
-def print_stones(stones: list[Stone]):
-    print(" ".join(str(stone.number) for stone in stones))
-
-def part1(stones: list[Stone], steps: int=1) -> list[Stone]:
+def part1(stones: list[int], steps: int=1) -> int:
+    """Calculate number of stones after N steps"""
+    num_stones = 0
     
-    # create a copy of stones
-    stones = [Stone(stone.number) for stone in stones]
+    for stone in stones:
+        num_stones += blink(stone, steps)
     
-    for _ in range(steps):
-        ix_off = 0
-    
-        for ix, stone in enumerate(stones[:]):
-            
-            extra = stone.change()
-            if (extra is not None):
-                stones.insert(ix + ix_off, extra)
-                ix_off += 1
-        
-        #print_stones(stones)
-    
-    return stones
+    return num_stones
 
 def main(args):
     
     stones = read_inputs(args.example)
-    stones = part1(stones, steps=25)
-    logging.info(f'Part 1: {len(stones)} stones: '
-                 f'{" ".join(str(stone.number) for stone in stones[:25])}')
-    stones = part1(stones, steps=75)
-    logging.info(f'Part 1: {len(stones)} stones: '
-                 f'{" ".join(str(stone.number) for stone in stones[:25])}')
+    num_stones = part1(stones, steps=25)
+    logging.info(f'Part 1: {num_stones} stones after 25 steps.')
+    num_stones = part1(stones, steps=75)
+    logging.info(f'Part 1: {num_stones} stones after 75 steps.')
 
 if __name__ == '__main__':
     args = setup()
