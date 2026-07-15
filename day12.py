@@ -42,9 +42,12 @@ Position = tuple[int, int]
 @dataclass(eq=False)
 class Region:
     plant: int = field(repr=False)
-    perimeter: int = 0
-    plots: list[Position] = field(default_factory=list, repr=False)
-    
+    plots: set[Position] = field(default_factory=set, repr=False)
+    _tl: Position = field(default=(0, 0), init=False, repr=False)
+    """Bounding Box Top Left"""
+    _br: Position = field(default=(0, 0), init=False, repr=False)
+    """Bounding Box Bottom Right"""
+
     @property
     def area(self):
         return len(self.plots)
@@ -54,16 +57,73 @@ class Region:
         return self.area * self.perimeter
     
     @property
+    def perimeter(self):
+        """Calculate Perimeter of the Region"""
+        perimeter = 0
+        for plot in self.plots:
+            # check neighbors
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                neighbor = (plot[0] + dx, plot[1] + dy)
+                if neighbor not in self.plots:
+                    perimeter += 1
+        return perimeter
+    
+    @property
     def letter(self):
         return chr(ord('A') + self.plant)
     
+    def __iadd__(self, other: 'Position | Any'):
+        if not isinstance(other, Position.__base__):
+            return NotImplemented
+        # add plot
+        self.plots.add(other)
+        # update bounding boxes
+        self._tl = (min(self._tl[0], other[0]), min(self._tl[1], other[1]))
+        self._br = (max(self._br[0], other[0]), max(self._br[1], other[1]))
+        return self
+    
+    def halo(self) -> 'Region':
+        """Return the Halo of the Region
+        
+        Line of pixels around the edge of the Region, not including the Region itself.
+        """
+        # dilate by one plot in each direction
+        dilated = set((plot[0] + dx, plot[1] + dy)
+                      for plot in self.plots
+                      for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))
+                     )
+        # cut out self-intersections
+        dilated -= self.plots
+        return Region(plant=self.plant, plots=dilated)
+    
+    def __and__(self, other: 'Region | Any') -> bool:
+        """Check if Regions intersect"""
+        if not isinstance(other, Region):
+            return NotImplemented
+        # let's see if bounding boxes intersect first
+        lhs_minx, lhs_miny = self._tl
+        rhs_minx, rhs_miny = other._tl
+        lhs_maxx, lhs_maxy = self._br
+        rhs_maxx, rhs_maxy = other._br
+
+        # bounding boxes don't intersect --> no intersection
+        if (lhs_maxx < rhs_minx or rhs_maxx < lhs_minx or
+            lhs_maxy < rhs_miny or rhs_maxy < lhs_miny):
+            return False
+        
+        # actually check if any plots intersect
+        if self.plots & other.plots:
+            return True
+        
+        # no plot intersections
+        return False
+
     def __ior__(self, other: 'Region | Any'):
         if not isinstance(other, Region):
             return NotImplemented
         if (other.plant != self.plant):
             raise RuntimeError(f'Cannot merge unrelated Regions.')
-        self.plots += other.plots
-        self.perimeter += other.perimeter
+        self.plots |= other.plots
         return self
     
     def __contains__(self, item: 'Position | Any'):
@@ -121,37 +181,26 @@ def part1(puzzle: Puzzle) -> list[Region]:
     for y in range(puzzle.height):
         for x in range(puzzle.width):
             
-            # grab plant
-            plant = puzzle.map[y][x]
-            
-            # perimeter cost 4 less plots w/ same plant
-            perimeter = 4 - sum(1 if (puzzle.map[ny][nx] == plant) else 0 for nx, ny in _neighbors(x, y))
+            # create new region
+            current = Region(puzzle.map[y][x])
+            # add the current plot to the current region
+            current += (x, y)
             
             # find adjacent regions
-            adjacent_regions = set(region
-                                for pos in _neighbors(x, y)
-                                for region in regions_by_plant[plant]
-                                if pos in region
+            adjacent_regions = tuple(region
+                                for region in regions_by_plant[current.plant]
+                                if current.halo() & region
                                 )
             
-            # create/merge regions
-            if (len(adjacent_regions) == 0):
-                # create new region
-                region = Region(plant)
-                regions_by_plant[plant].append(region)
-            else:
-                adjacent_regions = tuple(adjacent_regions)
-                region = adjacent_regions[0]
-                for other in adjacent_regions[1:]:
-                    # merge into current region
-                    region |= other
-                    # remove region from map
-                    regions_by_plant[plant].remove(other)
+            # merge existing regions (if any)
+            for region in adjacent_regions:
+                # merge into current region
+                current |= region
+                # remove region from map
+                regions_by_plant[region.plant].remove(region)
             
-            # add the current plot to the current region
-            region.plots.append((x, y))
-            # add current perimeter to current region
-            region.perimeter += perimeter
+            # store new region
+            regions_by_plant[current.plant].append(current)
     
     # return flat region list
     return [region for regions in regions_by_plant.values() for region in regions]
@@ -163,6 +212,9 @@ def main(args):
     
     puzzle = read_inputs(args.example)
     regions = part1(puzzle)
+    if (logging.DEBUG):
+        for region in regions:
+            logging.debug(region)
     logging.info(f'Part 1: {sum(region.cost for region in regions)}'
                  f' ({" + ".join(str(region.cost) for region in regions[:25])})')
     part2()
