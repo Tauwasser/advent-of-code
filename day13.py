@@ -3,6 +3,7 @@
 
 import sys
 import logging
+import math
 import re
 
 from dataclasses import dataclass, field
@@ -73,7 +74,7 @@ def read_inputs(example=0) -> list[ClawMachine]:
         
     return machines
 
-def part1(machines: list[ClawMachine]) -> list[tuple[int, int]]:
+def part1(machines: list[ClawMachine], offset: int=0, max_presses: int=100) -> list[tuple[int, int]]:
     """Calculate the minimum number of Tokens needed to reach the Prize"""
     
     # token cost A=3, B=1
@@ -95,15 +96,17 @@ def part1(machines: list[ClawMachine]) -> list[tuple[int, int]]:
         # det([[Ax, Bx], [Ay, By]]) = Ax * By - Ay * Bx
         det = m.a[0] * m.b[1] - m.a[1] * m.b[0]
         
+        prize = (m.prize[0] + offset, m.prize[1] + offset)
+        
         if (det != 0):
             # unique solution
             # use Cramer's rule to solve for x0 and x1
-            x0 = (m.prize[0] * m.b[1] - m.prize[1] * m.b[0]) // det
-            x1 = (m.a[0] * m.prize[1] - m.a[1] * m.prize[0]) // det
+            x0 = (prize[0] * m.b[1] - prize[1] * m.b[0]) // det
+            x1 = (m.a[0] * prize[1] - m.a[1] * prize[0]) // det
             
             # double check the solution, because of truncating division
-            if (x0 * m.a[0] + x1 * m.b[0] == m.prize[0] and
-                x0 * m.a[1] + x1 * m.b[1] == m.prize[1]):
+            if (x0 * m.a[0] + x1 * m.b[0] == prize[0] and
+                x0 * m.a[1] + x1 * m.b[1] == prize[1]):
                 # unique solution with positive button presses
                 tokens.append((x0, x1))
             else:
@@ -114,17 +117,17 @@ def part1(machines: list[ClawMachine]) -> list[tuple[int, int]]:
             # no unique solution, check for at most 100 button pushes (per button)
             # prioritize button B, because it costs less
             found = False
-            x1 = min(100, min(m.prize[0] // m.b[0], m.prize[1] // m.b[1]))
+            x1 = min(max_presses, min(prize[0] // m.b[0], prize[1] // m.b[1]))
             while (not found and x1 >= 0):
-                for x0 in range(1, 100):
+                for x0 in range(1, max_presses):
                     # x coord overflow
-                    if (x0 * m.a[0] + x1 * m.b[0] > m.prize[0]):
+                    if (x0 * m.a[0] + x1 * m.b[0] > prize[0]):
                         break
                     # y coord overflow
-                    if (x0 * m.a[1] + x1 * m.b[1] > m.prize[1]):
+                    if (x0 * m.a[1] + x1 * m.b[1] > prize[1]):
                         break
-                    if (x0 * m.a[0] + x1 * m.b[0] == m.prize[0] and
-                        x0 * m.a[1] + x1 * m.b[1] == m.prize[1]):
+                    if (x0 * m.a[0] + x1 * m.b[0] == prize[0] and
+                        x0 * m.a[1] + x1 * m.b[1] == prize[1]):
                         tokens.append((x0, x1))
                         found = True
                         break
@@ -138,7 +141,7 @@ def part1(machines: list[ClawMachine]) -> list[tuple[int, int]]:
         
     return tokens
 
-def part2():
+def part2(machines: list[ClawMachine]) -> list[tuple[int, int]]:
     pass
 
 def main(args):
@@ -150,8 +153,9 @@ def main(args):
     tokens = part1(machines)
     logging.info(f'Part 1: {sum(3 * x0 + x1 for x0, x1 in tokens)} '
                  f'({", ".join(f"A×{x0} + B×{x1}" for x0, x1 in tokens[:25])})')
-    part2()
-    logging.info(f'Part 2: ')
+    tokens = part1(machines, offset=10000000000000, max_presses=math.inf)
+    logging.info(f'Part 2: {sum(3 * x0 + x1 for x0, x1 in tokens)} '
+                 f'({", ".join(f"A×{x0} + B×{x1}" for x0, x1 in tokens[:25])})')
 
 if __name__ == '__main__':
     args = setup()
