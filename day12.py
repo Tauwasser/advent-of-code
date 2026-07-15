@@ -57,6 +57,10 @@ class Region:
         return self.area * self.perimeter
     
     @property
+    def bulk(self):
+        return self.area * self.sides
+    
+    @property
     def perimeter(self):
         """Calculate Perimeter of the Region"""
         perimeter = 0
@@ -67,6 +71,37 @@ class Region:
                 if neighbor not in self.plots:
                     perimeter += 1
         return perimeter
+    
+    @property
+    def sides(self) -> int:
+        """Count Sides of the Region"""
+        # basic idea: calculate the halo for each direction, then
+        # count sides vertically and horizontally
+        
+        sides = 0
+        
+        for sortkey, displacements, Dx, Dy in (
+            # sortkey                dx, dy              Dx, Dy
+            (lambda p: (p[0], p[1]), ((-1,  0), (1, 0)), 0, 1),
+            (lambda p: (p[1], p[0]), (( 0, -1), (0, 1)), 1, 0)
+        ):
+            # calculate directional halo, then count sides
+            for dx, dy in displacements:
+                # dilate by one plot in vertical/horizontal direction
+                dilated = set((plot[0] + dx, plot[1] + dy) for plot in self.plots)
+                # cut out self-intersections
+                dilated -= self.plots
+                # sort by x, then y (vertical) or y, then x (horizontal)
+                dilated = iter(sorted(dilated, key=sortkey) + [(-1, -1)])  # sentinel
+                
+                # count contiguous fence segment breaks
+                last = next(dilated)
+                for fence in dilated:
+                    if (fence[0] != last[0] + Dx) or (fence[1] != last[1] + Dy):
+                        sides += 1
+                    last = fence
+        
+        return sides
     
     @property
     def letter(self):
@@ -130,7 +165,7 @@ class Region:
         return (item in self.plots)
     
     def __repr__(self):
-        return f'{self.__class__.__name__}(letter={self.letter}, area={self.area}, perimeter={self.perimeter})'
+        return f'{self.__class__.__name__}(letter={self.letter}, area={self.area}, perimeter={self.perimeter}, sides={self.sides})'
 
 
 @dataclass
@@ -218,7 +253,8 @@ def main(args):
     logging.info(f'Part 1: {sum(region.cost for region in regions)}'
                  f' ({" + ".join(str(region.cost) for region in regions[:25])})')
     part2()
-    logging.info(f'Part 2: ')
+    logging.info(f'Part 2: {sum(region.bulk for region in regions)}'
+                 f' ({" + ".join(str(region.bulk) for region in regions[:25])})')
 
 if __name__ == '__main__':
     args = setup()
